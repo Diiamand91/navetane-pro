@@ -54,6 +54,12 @@
     }
   }
   canvas{display:block;width:100%;height:100%;touch-action:none}
+  #c3d{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+  /* mode 3D : l'application remplit tout l'écran, plus de letterbox 1000x640 */
+  #app.app3d{ width:100vw; height:100dvh; border-radius:0; box-shadow:none }
+  @media (min-width:1100px) and (min-height:700px){
+    #app.app3d{ width:100vw; height:100dvh; border-radius:0 }
+  }
 
   /* ---------------- HUD ---------------- */
   #hud{position:absolute;inset:0;pointer-events:none;font-weight:700;letter-spacing:.02em}
@@ -454,6 +460,27 @@
   .tbtn.shoot{right:18px;width:88px;height:88px;bottom:20px}
   .tbtn:active{transform:scale(.94)}
   .tbtn small{display:block;font-size:8px;letter-spacing:.06em;opacity:.75;font-weight:800}
+  /* ---- nouvelles commandes tactiles (étape 4) ---- */
+  .tbtn.sprint{left:150px;bottom:24px;width:70px;height:70px;font-size:9.5px;
+    background:linear-gradient(180deg,#c6f7d0,#2ec06a);color:#04140a}
+  .tbtn.sprint.on{transform:scale(.93);box-shadow:0 0 0 4px rgba(46,192,106,.45)}
+  .tbtn.through{right:112px;bottom:108px;width:62px;height:62px;font-size:7.5px;letter-spacing:.02em;
+    background:linear-gradient(180deg,#bff0ea,#25b3a4);color:#03130f}
+  .tbtn.tackle{right:18px;bottom:20px;width:88px;height:88px;
+    background:linear-gradient(180deg,#ffb4bd,#e0354f);color:#1a0207}
+  .tbtn.switch{right:20px;bottom:118px;width:56px;height:56px;font-size:8px;
+    background:linear-gradient(180deg,#cfd8e6,#7e8ea6);color:#0a1119}
+  /* attaque : on cache tacle / changer · défense : on cache tir / profondeur */
+  #touch.mode-def .tbtn.shoot, #touch.mode-def .tbtn.through,
+  #touch.mode-def .tbtn.pass, #touch.mode-def .tbtn.feint{display:none}
+  #touch.mode-atk .tbtn.tackle, #touch.mode-atk .tbtn.switch{display:none}
+  /* jauge de puissance autour du bouton TIR */
+  #shootRing{position:absolute;right:18px;bottom:20px;width:88px;height:88px;pointer-events:none;
+    z-index:2;transform:rotate(-90deg)}
+  #shootRing svg{width:100%;height:100%;display:block}
+  #shootRing circle{fill:none;stroke-width:9;stroke-linecap:round}
+  #shootRing .bg{stroke:rgba(0,0,0,.25)}
+  #shootRing .fg{stroke:#fff36b;stroke-dasharray:289;stroke-dashoffset:289;transition:stroke-dashoffset .05s linear}
 
   #pauseBtn{
     position:absolute;top:10px;right:14px;z-index:15;pointer-events:auto;
@@ -525,6 +552,11 @@
     .tbtn.feint{right:162px;bottom:20px;width:58px;height:58px;font-size:8.5px}
     .tbtn.shoot{right:14px;bottom:14px;width:76px;height:76px}
     .tbtn small{display:none}
+    .tbtn.sprint{left:134px;bottom:16px;width:62px;height:62px;font-size:8.5px}
+    .tbtn.through{right:92px;bottom:92px;width:54px;height:54px;font-size:7px}
+    .tbtn.tackle{right:14px;bottom:14px;width:76px;height:76px}
+    .tbtn.switch{right:16px;bottom:100px;width:50px;height:50px;font-size:7px}
+    #shootRing{right:14px;bottom:14px;width:76px;height:76px}
     #commentary{top:74px}
   }
   @media (max-height: 380px){
@@ -547,6 +579,7 @@
 <body>
 <div id="app">
   <canvas id="pitch"></canvas>
+  <canvas id="c3d" style="display:none"></canvas>
 
   <div id="hud">
     <div class="scoreboard">
@@ -569,6 +602,14 @@
     <div class="tbtn feint" id="btnFeint">FEINTE</div>
     <div class="tbtn pass" id="btnPass">PASSE</div>
     <div class="tbtn shoot" id="btnShoot">TIR<small>MAINTENIR</small></div>
+    <div class="tbtn tackle" id="btnTackle">TACLE</div>
+    <div class="tbtn switch" id="btnSwitch">CHANGER</div>
+    <div class="tbtn through" id="btnThrough">PROFOND</div>
+    <div class="tbtn sprint" id="btnSprint">SPRINT</div>
+    <div id="shootRing"><svg viewBox="0 0 100 100">
+      <circle class="bg" cx="50" cy="50" r="46"></circle>
+      <circle class="fg" id="ringFg" cx="50" cy="50" r="46"></circle>
+    </svg></div>
   </div>
 
   <div id="pauseBtn">❚❚</div>
@@ -807,6 +848,8 @@
   </div>
 </div>
 
+<script src="three.min.js"></script>
+<script src="n3d.js"></script>
 <script>
 "use strict";
 /* =========================================================================
@@ -892,6 +935,12 @@ const Audio = (()=>{
 /* ------------------------------ Config ------------------------------ */
 const W = 1000, H = 640;
 const canvas = document.getElementById('pitch');
+const canvas3 = document.getElementById('c3d');
+const appEl = document.getElementById('app');
+/* Le moteur 3D peut être absent (fichier non téléversé, WebGL refusé) :
+   ces garde-fous évitent tout plantage, le jeu repasse alors en 2D. */
+const N3D_READY = () => { try { return !!(typeof N3D !== 'undefined' && N3D && N3D.ready); } catch (e) { return false; } };
+const N3D_CALL = (fn, ...a) => { try { return (typeof N3D !== 'undefined' && N3D && N3D[fn]) ? N3D[fn](...a) : false; } catch (e) { return false; } };
 const ctx = canvas.getContext('2d');
 // rendu en haute résolution (net sur écran Retina / grand écran)
 const IS_TOUCH_DEVICE = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
@@ -1044,6 +1093,7 @@ const state = {
 /* ------------------------------ Entrées ------------------------------ */
 const keys = new Set();
 const touchInput = { x:0, y:0, shoot:false, pass:false };
+const touchFlags = { sprint:false };   // commande SPRINT maintenue au doigt
 let stickActive=false, stickId=null, stickCenter={x:0,y:0};
 
 window.addEventListener('keydown', e=>{
@@ -1128,6 +1178,7 @@ function moveVector(side=0){
 }
 function isSprint(side=0){
   if(side===1) return (state.netRole==='host' ? netKeys : keys).has(P2K.sprint);
+  if(touchFlags.sprint) return true;
   return keys.has('ShiftLeft') || (!state.twoP && keys.has('ShiftRight'));
 }
 
@@ -1892,6 +1943,7 @@ function shootBall(p, power){
   state.ball.spin = rnd(0,TAU);
   state.stats.shots[p.team]++;
   state.ball.shotBy = p.team; state.ball.isShot = true;
+  state.ball.diveDone = false; state.ball.saveTried = false;
   state.ball.penaltyShot = state.penActive > 0;
   Audio.kick(0.7+power*0.6);
   state.shake = Math.min(12, 4+power*7);
@@ -2059,6 +2111,45 @@ function moveTo(p, tx, ty, maxSpeed, dt, precise=false){
 }
 
 /* ------------------------------ Contrôle humain ------------------------------ */
+/* Tacle déclenché par l'humain : élan vers le ballon, duel immédiat s'il est à portée. */
+function doTackle(side=0){
+  if(state.phase!=='play') return;
+  const p = side===1 ? state.controlled2 : state.controlled;
+  if(!p || p.isGK || p.off) return;
+  if(ball.owner === p) return;                 // on a le ballon : rien à tacler
+  if((p.tackleCd||0) > 0) return;
+  p.tackleCd = 30; p.tackleT = 16;
+  const a = Math.atan2(ball.y-p.y, ball.x-p.x);
+  p.vx += Math.cos(a)*4.4; p.vy += Math.sin(a)*4.4;
+  p.aim = a;
+  Audio.kick(0.4);
+  const d = dist(p, ball);
+  const o = ball.owner;
+  if(d > 30){
+    if(isHuman(p)) say('Tacle dans le vide…');
+    return;
+  }
+  if(o && o.team !== p.team){
+    const behind = ((o.x-p.x)*Math.cos(o.aim||0) + (o.y-p.y)*Math.sin(o.aim||0)) > 4;
+    const tech = p.tech||0.85;
+    const chance = 0.42 + tech*0.22 - (behind ? 0.05 : 0) + (p.def||0)*0.04;
+    if(Math.random() < chance){
+      setOwner(p); o.kickCd = 18; p.touchCd = 10; p.possTimer = 14;
+      state.stats.duels[p.team]++;
+      state.effects.push({x:ball.x, y:ball.y, ring:true, vx:0, vy:0, life:22, max:22, s:12, c:'#7ef7a1', rot:0, vr:0});
+      if(isHuman(p)) say('Tacle récupérateur !');
+    } else if(Math.random() < 0.34){
+      awardFoul(o, p, behind);                  // tacle en retard : faute
+    } else {
+      p.touchCd = 16;
+      if(isHuman(p)) say('Tacle manqué…');
+    }
+  } else if(!o){
+    setOwner(p); p.touchCd = 6;
+    if(isHuman(p)) say('Ballon récupéré !');
+  }
+}
+
 function manualSwitch(side=0){
   if(state.phase!=='play') return;
   const team = side===1 ? 1 : 0;
@@ -2148,6 +2239,7 @@ function stepPlayers(dt){
     const spd = Math.hypot(p.vx,p.vy);
     p.anim = (p.anim||0) + spd*dt*0.34;
     p.kickAnim = Math.max(0,(p.kickAnim||0)-dt);
+    p.tackleCd = Math.max(0,(p.tackleCd||0)-dt); p.tackleT = Math.max(0,(p.tackleT||0)-dt);
     p.jumpT = Math.max(0,(p.jumpT||0)-dt);
     p.moving = spd > 0.35;
     p.sprinting = spd > 3.1;
@@ -2489,7 +2581,23 @@ function stepBall(dt){
     });
   }
 
+  // le gardien plonge même s'il ne touche pas le ballon
+  if(b.isShot && !b.owner && !b.diveDone && Math.abs(b.vx)>3){
+    const targetX = b.vx < 0 ? F.x : F.r;
+    if(Math.abs(b.x-targetX) < 135){
+      const gk = state.players.find(q=>q.isGK && (q.dirSign>0 ? targetX===F.x : targetX===F.r));
+      if(gk && (gk.diveT||0) <= 0){
+        gk.diveT = 26;
+        gk.diveDir = Math.sign(b.y-gk.y) || 1;
+        gk.divePow = clamp(Math.hypot(b.vx,b.vy)/22, 0.45, 1);
+        gk.diveHigh = (b.z||0) > 16;
+        b.diveDone = true;
+      }
+    }
+  }
+
   state.players.forEach(p=>{
+    p.diveT=Math.max(0,(p.diveT||0)-dt);
     p.touchCd=Math.max(0,p.touchCd-dt);
     p.possTimer=Math.max(0,(p.possTimer||0)-dt);
     p.gkGrace=Math.max(0,(p.gkGrace||0)-dt);
@@ -2512,6 +2620,11 @@ function stepBall(dt){
 
 function handleGKSave(gk, spd){
   const b = state.ball;
+  // animation de plongeon (lue par le rendu 3D)
+  gk.diveT = 26;
+  gk.diveDir = Math.sign(b.y-gk.y) || (Math.random()<0.5 ? -1 : 1);
+  gk.divePow = clamp(spd/22, 0.45, 1);
+  gk.diveHigh = (b.z||0) > 16;
   if(b.saveTried) return;          // un seul duel par frappe : sinon le gardien gagne toujours
   b.saveTried = true;
   const d=DIFFS[state.diff];
@@ -2544,6 +2657,34 @@ function handleGKSave(gk, spd){
   }
 }
 
+/* Poteau / barre : le ballon repart dans le jeu au lieu d'entrer.
+   Tolerance en pixels de simulation (7 px ~ le diametre du ballon). */
+function frameHitZ(b){
+  const z = b.z||0;
+  if(b.y < GOAL_TOP-8 || b.y > GOAL_BOT+8) return null;
+  const dPost = Math.min(Math.abs(b.y-GOAL_TOP), Math.abs(b.y-GOAL_BOT));
+  if(dPost < 7 && z <= 44) return 'poteau';
+  if(b.y > GOAL_TOP+7 && b.y < GOAL_BOT-7 && z >= 38 && z <= 48) return 'barre';
+  return null;
+}
+
+function hitWoodwork(b, dir){       // dir = +1 : le ballon revient vers la droite
+  const what = frameHitZ(b);
+  if(!what) return false;
+  const spd = Math.hypot(b.vx,b.vy);
+  b.x += dir*4;
+  b.vx = dir*Math.max(1.4, spd*0.55);
+  b.vy = (b.vy||0)*0.45;
+  b.vz = (what==='barre') ? -Math.max(0.8, Math.abs(b.vz||0)*0.45) : Math.max(1.0, b.vz||0);
+  if(what==='barre' && b.vy===0) b.vy = rnd(-2.2,2.2);
+  b.isShot = false;
+  if(b.shotBy===0 || b.shotBy===1) state.stats.onTarget[b.shotBy]++;
+  Audio.kick(1.05);
+  state.shake = Math.max(state.shake, 6);
+  say(what==='poteau' ? 'Sur le poteau !' : 'La barre transversale !');
+  return true;
+}
+
 function checkBounds(){
   if(state.phase!=='play') return;
   const b=state.ball;
@@ -2551,11 +2692,13 @@ function checkBounds(){
   const inGoalMouth = b.y > GOAL_TOP && b.y < GOAL_BOT;
 
   if(b.x <= F.x){
+    if(inGoalMouth && hitWoodwork(b, 1)) return;
     if(inGoalMouth && (b.z||0) <= 42){ b.x=Math.max(b.x, F.x-GOAL_D-6); b.z=0; goalScored(1); return; }
     if(inGoalMouth && (b.z||0) > 42){ say('Au-dessus de la barre !'); }
     ballOutOfPlay('goalline','left', b.x, b.y); return;
   }
   if(b.x >= F.r){
+    if(inGoalMouth && hitWoodwork(b, -1)) return;
     if(inGoalMouth && (b.z||0) <= 42){ b.x=Math.min(b.x, F.r+GOAL_D+6); b.z=0; goalScored(0); return; }
     if(inGoalMouth && (b.z||0) > 42){ say('Au-dessus de la barre !'); }
     ballOutOfPlay('goalline','right', b.x, b.y); return;
@@ -2661,9 +2804,22 @@ function kickoffAfterGoal(){
 
 /* ------------------------------ Boucle ------------------------------ */
 let last=performance.now();
+let _dt3 = 1;
+/* qualité adaptative : si l'appareil peine, on baisse la résolution de rendu
+   (une seule fois, sans jamais osciller) */
+let _qFrames = 0, _qTime = 0, _qLevel = 1;
+function _qWatch(raw){
+  if(_qLevel === 0 || raw <= 0 || raw > 250) return;
+  _qFrames++; _qTime += raw;
+  if(_qFrames < 120) return;
+  const avg = _qTime / _qFrames;
+  _qFrames = 0; _qTime = 0;
+  if(avg > 38){ _qLevel = 0; N3D_CALL('setQuality', 0); }
+}
 function loop(now){
   const raw = now-last; last=now;
   let dt = clamp(raw/16.6667, 0, 3);
+  _dt3 = Math.min(0.05, raw/1000) || 0.016;
 
   if(state.netRole==='guest'){
     netGuestFrame(dt);
@@ -2674,7 +2830,19 @@ function loop(now){
       if(netTick % 3 === 0) netSendSnapshot();
     }
   }
-  render();
+  if(N3D_READY()){
+    if(canvas.style.display !== 'none') canvas.style.display = 'none';
+    if(canvas3.style.display !== 'block'){
+      canvas3.style.display = 'block';
+      appEl.classList.add('app3d');
+      N3D_CALL('resize');
+    }
+    if(!N3D_CALL('draw', _dt3, state)) render();
+    _qWatch(raw);
+    touchUIContext();
+  } else {
+    render();
+  }
   requestAnimationFrame(loop);
 }
 
@@ -4106,6 +4274,7 @@ function netInput(m){
   if(m.pa) doUserPass(1);
   if(m.fe) doFeint(state.controlled2);
   if(m.th) doThroughBall(state.controlled2);
+  if(m.ta) doTackle(1);
   if(m.act==='sw') manualSwitch(1);
   if(m.act==='skill' && m.dir) doSkillMove(m.dir, 1);
 }
@@ -4235,7 +4404,7 @@ function netSendInput(extra){
     r:(gKeys.has('ArrowRight')||gKeys.has('KeyD'))?1:0,
     u:(gKeys.has('ArrowUp')||gKeys.has('KeyW')||gKeys.has('KeyZ'))?1:0,
     d:(gKeys.has('ArrowDown')||gKeys.has('KeyS'))?1:0,
-    s:(gKeys.has('ShiftLeft')||gKeys.has('ShiftRight'))?1:0,
+    s:(gKeys.has('ShiftLeft')||gKeys.has('ShiftRight')||touchFlags.sprint)?1:0,
     sh:(gKeys.has('Space')||touchShoot)?1:0
   };
   if(Math.hypot(touchInput.x,touchInput.y) > 0.12 || netTouchWasActive){
@@ -4587,12 +4756,69 @@ btnShoot.addEventListener('pointercancel', ()=>{
   if(state.netRole==='guest'){ touchShoot=false; netSendInput(); return; }
   releaseShot(); });
 
+/* ---- TACLE ---- */
+const btnTackle = document.getElementById('btnTackle');
+const btnSwitch = document.getElementById('btnSwitch');
+const btnThrough = document.getElementById('btnThrough');
+const btnSprint = document.getElementById('btnSprint');
+const ringFg = document.getElementById('ringFg');
+const hudEl = document.getElementById('hud');
+const touchEl = document.getElementById('touch');
+
+btnTackle.addEventListener('pointerdown', e=>{ e.preventDefault(); Audio.init();
+  if(state.netRole==='guest'){ Net.send({t:'in', ta:1}); return; }
+  doTackle(0); });
+
+/* ---- CHANGER DE JOUEUR ---- */
+btnSwitch.addEventListener('pointerdown', e=>{ e.preventDefault(); Audio.init();
+  if(state.netRole==='guest'){ Net.send({t:'in', act:'sw'}); return; }
+  manualSwitch(0); });
+
+/* ---- PASSE EN PROFONDEUR ---- */
+btnThrough.addEventListener('pointerdown', e=>{ e.preventDefault(); Audio.init();
+  if(state.netRole==='guest'){ Net.send({t:'in', th:1}); return; }
+  doThroughBall(state.controlled); });
+
+/* ---- SPRINT (maintenu) ---- */
+function sprintOn(e){ e.preventDefault(); Audio.init(); touchFlags.sprint = true; btnSprint.classList.add('on');
+  if(state.netRole==='guest') netSendInput(); }
+function sprintOff(e){ if(e) e.preventDefault(); touchFlags.sprint = false; btnSprint.classList.remove('on');
+  if(state.netRole==='guest') netSendInput(); }
+btnSprint.addEventListener('pointerdown', sprintOn);
+btnSprint.addEventListener('pointerup', sprintOff);
+btnSprint.addEventListener('pointercancel', sprintOff);
+btnSprint.addEventListener('pointerleave', ()=>{ if(touchFlags.sprint) sprintOff(); });
+window.addEventListener('blur', ()=>{ touchFlags.sprint = false; btnSprint.classList.remove('on'); });
+
+/* ---- disposition attaque / défense + jauge de puissance ---- */
+let _touchMode = '';
+function touchUIContext(){
+  const atk = !!(ball.owner && ball.owner.team===0 && !ball.owner.isGK);
+  const mode = atk ? 'mode-atk' : 'mode-def';
+  if(mode !== _touchMode){
+    _touchMode = mode;
+    touchEl.classList.remove('mode-atk','mode-def');
+    touchEl.classList.add(mode);
+    if(mode === 'mode-def'){   // on relâche le sprint visuel si besoin
+      btnSprint.classList.toggle('on', touchFlags.sprint);
+    }
+  }
+  const v = charges[0].on ? charges[0].v : 0;
+  ringFg.style.strokeDashoffset = String(Math.round(289*(1-v)));
+}
+touchEl.classList.add('mode-atk');
+
 /* ------------------------------ Boot ------------------------------ */
 state.phase='menu';
-requestAnimationFrame(loop);
+// --- moteur 3D : démarrage, redimensionnement, surveillance ---
+if(window.THREE){
+  setTimeout(()=>{ if(N3D_CALL('init', canvas3)) N3D_CALL('resize'); }, 30);
+}
+window.addEventListener('resize', ()=>{ if(N3D_READY()) N3D_CALL('resize'); });
+window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{ if(N3D_READY()) N3D_CALL('resize'); }, 250); });
+window.__n3d = (typeof N3D !== 'undefined') ? N3D : null;
 
-// petit rendu de menu : joueurs en démo derrière
-window.addEventListener('resize', ()=>{});
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>

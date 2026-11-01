@@ -1,7 +1,7 @@
 /* NAVÉTANE — service worker : hors ligne + mises à jour */
-const CACHE = 'navetane-v16';
+const CACHE = 'navetane-v18';
 const ASSETS = [
-  './', './index.html', './manifest.webmanifest',
+  './', './index.html', './n3d.js', './three.min.js', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-384.png',
   './icons/icon-512.png', './icons/icon-maskable-512.png'
 ];
