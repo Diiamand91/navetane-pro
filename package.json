@@ -1,0 +1,14 @@
+{
+  "name": "navetane-pro",
+  "version": "15.0.0",
+  "description": "NAVÉTANE PRO — football de quartier 11v11, PWA + jeu en ligne (salons WebSocket)",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT",
+  "private": true
+}
