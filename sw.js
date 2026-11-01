@@ -1,5 +1,5 @@
 /* NAVÉTANE — service worker : hors ligne + mises à jour */
-const CACHE = 'navetane-v15';
+const CACHE = 'navetane-v16';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-384.png',

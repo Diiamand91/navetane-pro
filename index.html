@@ -24,24 +24,34 @@
     --stroke:rgba(255,255,255,.10);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%;margin:0}
+  html,body{height:100%;margin:0;background:#04060a;overscroll-behavior:none}
   body{
     background:
       radial-gradient(1200px 700px at 50% -10%, #123 0%, #070a11 45%, #04060a 100%);
     color:var(--ink);
     font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
     display:flex;align-items:center;justify-content:center;
-    overflow:hidden;
+    overflow:hidden;position:fixed;inset:0;width:100%;height:100%;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   #app{
     position:relative;
-    width:min(100vw, calc(100vh * 1000 / 640));
-    height:min(100vh, calc(100vw * 640 / 1000));
-    border-radius:18px;
+    width:min(100vw, calc(100dvh * 1000 / 640));
+    height:min(100dvh, calc(100vw * 640 / 1000));
+    border-radius:0;
     overflow:hidden;
-    box-shadow:0 40px 120px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.06) inset;
     background:#04060a;
     isolation:isolate;
+  }
+  /* sur un vrai écran d'ordinateur on garde la "carte" arrondie */
+  @media (min-width:1100px) and (min-height:700px){
+    #app{
+      width:min(96vw, calc(96dvh * 1000 / 640));
+      height:min(96dvh, calc(96vw * 640 / 1000));
+      border-radius:18px;
+      box-shadow:0 40px 120px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.06) inset;
+    }
   }
   canvas{display:block;width:100%;height:100%;touch-action:none}
 
@@ -606,6 +616,7 @@
 
     <div class="actions">
       <button class="btn" id="startBtn">Coup d'envoi</button>
+      <button class="btn ghost sm" id="fsBtn">Plein écran</button>
       <button class="btn ghost sm" id="onBtn">En ligne</button>
       <button class="btn ghost sm" id="palBtn">Palmarès</button>
       <button class="btn ghost sm" id="installBtn" style="display:none">Installer l'app</button>
@@ -4392,6 +4403,22 @@ document.getElementById('onMenuBtn').onclick=()=>{
 };
 document.getElementById('palBtn').onclick=()=>{ Audio.init(); showPalmares(); };
 document.getElementById('proBtn').onclick=()=>{ Audio.init(); showPro(); };
+function goFullscreen(){
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if(!req) { if(IS_TOUCH_DEVICE) proToast('Sur iPhone : installe le jeu sur l\'écran d\'accueil pour le plein écran.'); return false; }
+  if(document.fullscreenElement || document.webkitFullscreenElement) return true;
+  try{
+    const r = req.call(el);
+    if(r && r.then) r.then(()=>{ try{ if(screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(()=>{}); }catch(e){} }).catch(()=>{});
+    return true;
+  }catch(e){ return false; }
+}
+document.getElementById('fsBtn').onclick=()=>{ Audio.init(); goFullscreen(); };
+if(IS_TOUCH_DEVICE && Math.min(screen.width, screen.height) < 900){
+  const once = ()=>{ goFullscreen(); window.removeEventListener('pointerdown', once); };
+  window.addEventListener('pointerdown', once, {passive:true});
+}
 document.getElementById('proBack').onclick=()=>{
   document.getElementById('pro').classList.add('hidden');
   document.getElementById('menu').classList.remove('hidden');
